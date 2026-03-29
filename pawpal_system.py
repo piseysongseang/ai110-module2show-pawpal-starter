@@ -22,6 +22,13 @@ class Priority(Enum):
     LOW = 1
 
 
+class Preference(Enum):
+    MORNING_WALKS = "morning_walks"
+    EVENING_FEEDING = "evening_feeding"
+    SKIP_GROOMING = "skip_grooming"
+    CLUSTER_TASKS = "cluster_tasks"
+
+
 @dataclass
 class Task:
     name: str
@@ -29,6 +36,7 @@ class Task:
     duration_minutes: int
     priority: Priority
     is_required: bool = False
+    preferred_time: Optional[time] = None  # e.g. medication must be at 08:00
     notes: str = ""
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
@@ -55,13 +63,13 @@ class Pet:
 class Owner:
     name: str
     available_minutes: int
-    preferences: list[str] = field(default_factory=list)
+    preferences: list[Preference] = field(default_factory=list)  # structured, not free-text
     pets: list[Pet] = field(default_factory=list)
 
-    def add_pet(self, pet: Pet) -> None:
+    def add_pet(self, _pet: Pet) -> None:
         pass
 
-    def set_availability(self, minutes: int) -> None:
+    def set_availability(self, _minutes: int) -> None:
         pass
 
 
@@ -75,20 +83,26 @@ class ScheduledTask:
 @dataclass
 class DailyPlan:
     plan_date: date
+    owner: Owner                                        # back-reference for context/display
+    pet: Pet                                            # back-reference for context/display
     scheduled: list[ScheduledTask] = field(default_factory=list)
     skipped: list[Task] = field(default_factory=list)
-    total_minutes: int = 0
     reasoning: str = ""
+
+    @property
+    def total_minutes(self) -> int:                     # computed, never stale
+        return sum(st.task.duration_minutes for st in self.scheduled)
 
     def summarize(self) -> str:
         pass
 
 
 class Scheduler:
-    def __init__(self, owner: Owner, pet: Pet) -> None:
+    def __init__(self, owner: Owner, pets: list[Pet]) -> None:
         self.owner = owner
-        self.pet = pet
-        self.pending_tasks: list[Task] = []
+        self.pets = pets                                # supports multiple pets
+        # flatten all tasks from all pets into one working list
+        self.pending_tasks: list[Task] = [t for pet in pets for t in pet.tasks]
 
     def generate_plan(self) -> DailyPlan:
         pass
@@ -97,4 +111,7 @@ class Scheduler:
         pass
 
     def sort_by_priority(self) -> list[Task]:
+        pass
+
+    def reserve_required_tasks(self) -> list[Task]:    # ensures required tasks always make the plan
         pass

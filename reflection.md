@@ -4,15 +4,20 @@
 
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+- The initial UML diagram models a pet care scheduling app with three layers: Data such as TaskType and Priority are enums categorize and rank tasks, Domain like Owner, Pet and Task represent the real-world entities and Planning- Scheduler takses an owner and pet, and outputs a DailyPlan of timed ScheduledTask.
+- Classes and their responsibilities:
+  - TaskType: labels what kind of care a task is (Walk, Feeding, Medication, others.)
+  - Priority: ranks urgency as High(3), Medium(2), or Low(1)
+  - Task: the fundamental unit of the system and represents one care activity with a name, type, duration, priority, and an optional notes field. Each task gets a unique auto-generated id.
+  - Pet: belongs to an owner and holds a list of Task objects. Supporting adding tasks and removing tasks.
+  - Owner: holds the pet(s) and the key scheduling constraint:available_minutes per day. Also stores preferences that influence planning.
+  - Scheduler: the planning engine. Takes an Owner and a Pet, then produces a DailyPlan by filtering tasks against the owner's time constraint and sorting them by priority.
+  - DailyPlan: the output of the scheduler and contains two lists: tasks that were schedules and tasks that were skipped.
+  - ScheduledTask: a thin wrapper that pairs a Task with a concrete start_time and end_time once it has been placed into the plan.
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
-
----
+- During implementation, Preferences class is added so that the clients can choose an option instead of typing. Since one owner can have many pets, Shceduler class has changed from pet:Pet to pets:list[Pet].
 
 ## 2. Scheduling Logic and Tradeoffs
 
