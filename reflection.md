@@ -23,13 +23,17 @@
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+- Constraints that the scheduler considered are time budget, priority, required flag, preferred time, completion status, due date and frequency.
+- How the priority order was decided:
+  - Required flag: a pet missing medication or a meal is a big deal.
+  - Time budget: an owner with 60 minutes cannot do 90 minutes of tasks no matter how high the priority.
+  - Priority: Once required tasks are reserved and the budget is known, priority determins which optional tasks are worth.
+  - Preferred time: A walk at 7am is better than 3pm, but either is acceptable.
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+- I added the method get_tasks_due_today() to the Pet class. It filter tasks to only those due today to make the scheduler becomes more focused.
+- This tradeoff is reasonable in this scenario because the scenario has predicable, recurring tasks and a user who needs a focused daily view and not an audit of everything that has ever been scheduled.
 
 ---
 

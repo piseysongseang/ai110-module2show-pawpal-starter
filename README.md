@@ -41,3 +41,13 @@ pip install -r requirements.txt
 5. Add tests to verify key behaviors.
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
+
+### Smart Scheduling
+
+PawPal+ uses a focused daily scheduling strategy: rather than presenting every task ever created, the scheduler only surfaces tasks that are **due today** and **not yet completed**.
+
+This is powered by `Pet.get_tasks_due_today()`, which filters each pet's task list to those whose `due_date` matches the current date. The result feeds directly into the `Scheduler`, keeping the daily plan short, actionable, and relevant to the owner's actual day.
+
+When a task is marked complete, `Scheduler.complete_task()` automatically calls `Task.next_occurrence()` to calculate and assign the next `due_date` — one day forward for `DAILY` tasks, one week forward for `WEEKLY` tasks. `AS_NEEDED` tasks are never auto-rescheduled and must be re-added manually.
+
+This design makes a deliberate tradeoff: the plan stays focused and avoids overwhelming the owner with future tasks, but it requires the owner to mark tasks complete so the system can keep the schedule accurate going forward.
