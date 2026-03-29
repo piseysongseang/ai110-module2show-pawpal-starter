@@ -22,6 +22,12 @@ class Priority(Enum):
     LOW = 1
 
 
+class Frequency(Enum):
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    AS_NEEDED = "as_needed"
+
+
 class Preference(Enum):
     MORNING_WALKS = "morning_walks"
     EVENING_FEEDING = "evening_feeding"
@@ -31,50 +37,88 @@ class Preference(Enum):
 
 @dataclass
 class Task:
+    """Represents a single pet care activity."""
     name: str
     type: TaskType
     duration_minutes: int
     priority: Priority
+    frequency: Frequency = Frequency.DAILY
     is_required: bool = False
-    preferred_time: Optional[time] = None  # e.g. medication must be at 08:00
+    is_completed: bool = False
+    preferred_time: Optional[time] = None
     notes: str = ""
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
+    def complete(self) -> None:
+        """Mark this task as completed."""
+        self.is_completed = True
+
+    def reset(self) -> None:
+        """Reset this task to incomplete for the next scheduling cycle."""
+        self.is_completed = False
+
     def __repr__(self) -> str:
-        return f"Task({self.name!r}, {self.type.value}, {self.duration_minutes}min, {self.priority.name})"
+        status = "done" if self.is_completed else "pending"
+        return f"Task({self.name!r}, {self.type.value}, {self.duration_minutes}min, {self.priority.name}, {status})"
 
 
 @dataclass
 class Pet:
+    """Stores pet details and owns a list of care tasks."""
     name: str
     species: str
     breed: str
     age: int
     tasks: list[Task] = field(default_factory=list)
 
-    def add_task(self, _task: Task) -> None:
-        pass
+    def add_task(self, task: Task) -> None:
+        """Append a task to this pet's task list."""
+        self.tasks.append(task)
 
-    def remove_task(self, _task_id: str) -> None:
-        pass
+    def remove_task(self, task_id: str) -> None:
+        """Remove a task from this pet's list by its unique ID."""
+        self.tasks = [t for t in self.tasks if t.id != task_id]
+
+    def get_pending_tasks(self) -> list[Task]:
+        """Return only tasks that have not yet been completed."""
+        return [t for t in self.tasks if not t.is_completed]
+
+    def __repr__(self) -> str:
+        return f"Pet({self.name!r}, {self.species}, {len(self.tasks)} tasks)"
 
 
 @dataclass
 class Owner:
+    """Manages multiple pets and provides access to all their tasks."""
     name: str
     available_minutes: int
-    preferences: list[Preference] = field(default_factory=list)  # structured, not free-text
+    preferences: list[Preference] = field(default_factory=list)
     pets: list[Pet] = field(default_factory=list)
 
-    def add_pet(self, _pet: Pet) -> None:
-        pass
+    def add_pet(self, pet: Pet) -> None:
+        self.pets.append(pet)
 
-    def set_availability(self, _minutes: int) -> None:
-        pass
+    def remove_pet(self, pet_name: str) -> None:
+        self.pets = [p for p in self.pets if p.name != pet_name]
+
+    def set_availability(self, minutes: int) -> None:
+        self.available_minutes = minutes
+
+    def get_all_tasks(self) -> list[Task]:
+        """Returns every task across all pets."""
+        return [task for pet in self.pets for task in pet.tasks]
+
+    def get_all_pending_tasks(self) -> list[Task]:
+        """Returns only incomplete tasks across all pets."""
+        return [task for pet in self.pets for task in pet.get_pending_tasks()]
+
+    def __repr__(self) -> str:
+        return f"Owner({self.name!r}, {len(self.pets)} pets, {self.available_minutes}min/day)"
 
 
 @dataclass
 class ScheduledTask:
+    """A Task placed at a specific time in the day."""
     task: Task
     start_time: Optional[time] = None
     end_time: Optional[time] = None
@@ -82,36 +126,90 @@ class ScheduledTask:
 
 @dataclass
 class DailyPlan:
+    """The output of the Scheduler for a given day."""
     plan_date: date
-    owner: Owner                                        # back-reference for context/display
-    pet: Pet                                            # back-reference for context/display
+    owner: Owner
     scheduled: list[ScheduledTask] = field(default_factory=list)
     skipped: list[Task] = field(default_factory=list)
     reasoning: str = ""
 
     @property
-    def total_minutes(self) -> int:                     # computed, never stale
+    def total_minutes(self) -> int:
         return sum(st.task.duration_minutes for st in self.scheduled)
 
     def summarize(self) -> str:
-        pass
+        lines = [
+            f"Plan for {self.owner.name} — {self.plan_date}",
+            f"Scheduled: {len(self.scheduled)} tasks ({self.total_minutes} min)",
+            f"Skipped:   {len(self.skipped)} tasks",
+        ]
+        for st in self.scheduled:
+            time_str = f"{st.start_time} → {st.end_time}" if st.start_time else "unscheduled"
+            lines.append(f"  • {st.task.name} [{time_str}]")
+        if self.skipped:
+            lines.append("Skipped:")
+            for t in self.skipped:
+                lines.append(f"  • {t.name} ({t.priority.name})")
+        if self.reasoning:
+            lines.append(f"Reasoning: {self.reasoning}")
+        return "\n".join(lines)
 
 
 class Scheduler:
-    def __init__(self, owner: Owner, pets: list[Pet]) -> None:
+    """The brain: retrieves, organizes, and manages tasks across all of an owner's pets."""
+
+    def __init__(self, owner: Owner) -> None:
         self.owner = owner
-        self.pets = pets                                # supports multiple pets
-        # flatten all tasks from all pets into one working list
-        self.pending_tasks: list[Task] = [t for pet in pets for t in pet.tasks]
+        self.pending_tasks: list[Task] = owner.get_all_pending_tasks()
 
     def generate_plan(self) -> DailyPlan:
-        pass
+        """Build a DailyPlan that fits within the owner's available time."""
+        required = self.reserve_required_tasks()
+        optional = self.sort_by_priority()
+
+        scheduled: list[ScheduledTask] = []
+        skipped: list[Task] = []
+        minutes_used = sum(t.duration_minutes for t in required)
+
+        # Always include required tasks
+        for task in required:
+            scheduled.append(ScheduledTask(task=task))
+
+        # Fill remaining time with optional tasks by priority
+        for task in optional:
+            if minutes_used + task.duration_minutes <= self.owner.available_minutes:
+                scheduled.append(ScheduledTask(task=task))
+                minutes_used += task.duration_minutes
+            else:
+                skipped.append(task)
+
+        reasoning = (
+            f"Reserved {len(required)} required task(s). "
+            f"Fit {len(scheduled) - len(required)} optional task(s) "
+            f"within {self.owner.available_minutes} min limit. "
+            f"Skipped {len(skipped)} task(s) due to time constraints."
+        )
+
+        return DailyPlan(
+            plan_date=date.today(),
+            owner=self.owner,
+            scheduled=scheduled,
+            skipped=skipped,
+            reasoning=reasoning,
+        )
 
     def filter_by_constraints(self) -> list[Task]:
-        pass
+        """Return tasks that individually fit within available time, excluding required ones."""
+        return [
+            t for t in self.pending_tasks
+            if not t.is_required and t.duration_minutes <= self.owner.available_minutes
+        ]
 
     def sort_by_priority(self) -> list[Task]:
-        pass
+        """Return optional tasks sorted by priority (HIGH first) then duration (shortest first)."""
+        optional = self.filter_by_constraints()
+        return sorted(optional, key=lambda t: (-t.priority.value, t.duration_minutes))
 
-    def reserve_required_tasks(self) -> list[Task]:    # ensures required tasks always make the plan
-        pass
+    def reserve_required_tasks(self) -> list[Task]:
+        """Return all required tasks — these always make the plan regardless of time."""
+        return [t for t in self.pending_tasks if t.is_required]
